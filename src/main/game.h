@@ -1,0 +1,9 @@
+#ifndef _game_h_
+#define _game_h_
+#include "0_GlobalIncludes.h"
+#include <raylib.h>
+#include <libgen.h>
+#include <raylib.h>
+#include <rlgl.h>
+#include <raymath.h>
+#include <search.h>
