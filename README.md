@@ -8,14 +8,31 @@ And maybe and MVP for a game/simulator
 ## Building the project:
 
  The _classic_ cmake stuff: (this is not needed using build.sh (see next section)
-```c
+```bash
     git clone <thisRepo>;
     git submodules update --init
     mkdir build; cd build;
     cmake ..
 ```
+## Dependencies:
+Check the CMakelists.txt for the most recent dependencies, but for now, the dependencies are:
+| Common  |
+|---------|
+| curl    |
+| libcurl |
+| glfw    |
+| raylib  |
+| json-c  |
+
+The resto of (personal) libraries are included as submodules, so you don't need to worry about them.
 
 ## Running the project:
+
+```bash
+    git clone https://github.com/israel24961/vroads.git
+    cd vroads
+    ./build.sh -er
+```
 
 Running this project, for now is kinda cringe, or not.
 
