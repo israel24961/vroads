@@ -69,7 +69,8 @@ OFFLINE="data.json"  SCALE=".001" ROADWIDTH=".005" DISTANCE_FROM_CENTER="5000.0"
 5. Make a road from data ☑️
 6. USe level field of struct way in road generation --kinda, need to implement the Dataconsumer section of this: https://wiki.openstreetmap.org/wiki/Key:layer
 7. Improve GenRoadFromPath - Sat Mar  2 08:58:19 PM CET 2024 - ☑️
-!!!!!! 6. Chunk the roads (add a new road when the camera is close to the end of the road) 
+6. Chunk the roads (add a new road when the camera is close to the end of the road)  🏗️
+6. 🌟 Setup this: https://github.com/LizardByte/Sunshine , 100 $
 6. __From now on, Autocompleted by Copilot__ ⬇️
 8. https://osmbuildings.org/?lat=52.52170&lon=13.42534&zoom=15.6&tilt=31&rotation=-11
 6. Make a car model  
@@ -77,6 +78,7 @@ OFFLINE="data.json"  SCALE=".001" ROADWIDTH=".005" DISTANCE_FROM_CENTER="5000.0"
 8. Make a car turn
 9. Make a car accelerate
 10. Make a car brake
+11. __I should learn coroutines__
 
 
 

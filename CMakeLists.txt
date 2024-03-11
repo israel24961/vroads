@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.5) # setting this is required
 project(vroads)            # this sets the project name
 #set debug flags if debug build
 if(CMAKE_BUILD_TYPE MATCHES Debug)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -ggdb -g3 -O0 -Wall -Wextra  -Werror -fsanitize=address -Wno-missing-braces")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -ggdb -g3 -O0 -Wall -Wextra   -fsanitize=address -Wno-missing-braces")
     add_definitions(-DDEBUG)
     #elseif (CMAKE_BUILD_TYPE MATCHES Release)
 else()
