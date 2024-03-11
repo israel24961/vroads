@@ -38,8 +38,10 @@ __Not yet__
 
 1. Minimap
     1. First iteration: 
-        - [ ] Load the png from the internet
-        - [ ] Display the png in a corner of the screen
+        - [X] Load the png from the internet
+        - [X] Display the png in a corner of the screen
+        - [ ] Make the minimap move with the player
+
 
 
     

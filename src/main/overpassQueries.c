@@ -356,3 +356,30 @@ f32 way_getWidth(__attribute__((unused)) json_object *element)
         // tags.width is very rare
         return .0f;
 }
+
+v2 WorldCoordsToLatLong(float metersFromOriginLat, float metersFromOriginLon, v2 pointOfOrigin)
+{
+        var deltaLat = LatLongToWorldDeltas((v3){pointOfOrigin.x, 0, pointOfOrigin.y});
+        return (v2){pointOfOrigin.x + metersFromOriginLat / deltaLat.x, pointOfOrigin.y - metersFromOriginLon / deltaLat.y};
+}
+v2 LatLongToWorldDeltas(v3 pointOfOrigin)
+{
+        var scale = getenv("SCALE") ? atof(getenv("SCALE")) : 1;
+        var earthRadius = 6371000;
+        var dlat = (111132.954 - 559.822 * cos(2 * pointOfOrigin.x) + 1.175 * cos(4 * pointOfOrigin.x)) * scale;
+        var dlon = 111132.954 * cos(pointOfOrigin.x) * scale;
+        return (v2){dlat, dlon};
+}
+f64 LatLongToMeters(f32 lat0, f32 lon0, f32 lat1, f32 lon1)
+{
+        f64 R = 6371000.0;
+        f64 dLat = (lat1 - lat0) * DEG2RAD;
+        f64 dLon = (lon1 - lon0) * DEG2RAD;
+        f64 a = sin(dLat / 2) * sin(dLat / 2) + cos(lat0 * DEG2RAD) * cos(lat1 * DEG2RAD) * sin(dLon / 2) * sin(dLon / 2);
+        f64 c = 2 * atan2(sqrt(a), sqrt(1 - a));
+        assert(c >= 0);
+        f64 d = R * c;
+        // v2 u = Vector2Normalize((v2){lat1 - lat0, lon1 - lon0});
+        // L("Distance between %f, %f and %f, %f: %fm", lat0, lon0, lat1, lon1, d);
+        return d;
+}

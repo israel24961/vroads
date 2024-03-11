@@ -1,7 +1,6 @@
 #ifndef _OVERPASS_QUERIES_H_
 #define _OVERPASS_QUERIES_H_
 #include "0_GlobalIncludes.h"
-#include <easycringelib.h>
 
 struct node {
   u64 id;
@@ -36,5 +35,7 @@ typedef struct OverpassQuery {
 /// @param query query to the overpass server
 /// @param url url to the overpass server, if NULL, a default url is used
 OverpassQuery *OverpassQuery_new(char *name, char *query, char *url) ;
-
+v2 WorldCoordsToLatLong(float lat, float lon, v2 pointOfOrigin);
+f64 LatLongToMeters(f32 lat0, f32 lon0, f32 lat1, f32 lon1);
+v2 LatLongToWorldDeltas(v3 pointOfOrigin);
 #endif

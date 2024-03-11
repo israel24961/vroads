@@ -29,14 +29,15 @@ add_executable(${PROJECT_NAME} src/main/main.c
     src/main/overpassQueries.c
     src/main/fileOperations.c
     src/glad/glad.c
-    src/glad/glad.h
-    src/glad/khrplatform.h )
+    src/glad/khrplatform.h 
+    src/minimap/minimap.c
+    )
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY C_STANDARD 23)
 add_definitions(-D_GNU_SOURCE)
 
 # This allows to include files relative to the root of the src directory with a <> pair
-target_include_directories(${PROJECT_NAME} PUBLIC src/main)
+target_include_directories(${PROJECT_NAME} PUBLIC src/main src/glad src/minimap)
 
 # This copies all resource files in the build directory.
 # We need this, because we want to work with paths relative to the executable.

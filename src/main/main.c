@@ -1,22 +1,8 @@
 #include "main.h"
-#include "../glad/glad.h"
-#include "log.h"
-#include <GLFW/glfw3.h>
-#include <assert.h>
-#include <raylib.h>
-#include <rlgl.h>
-#include <threads.h>
+#include "minimap.h"
+#include "overpassQueries.h"
 #define null NULL
 
-enum minimapStates : short { kmmInit = 0, kmmEmptyQueu, kReady, kDataReady, kDataLoading, kError };
-struct minimapCTX {
-        enum minimapStates state;
-        GLuint vao;
-        GLuint textureId;
-        GLuint shaderId;
-};
-void renderMinimap(struct minimapCTX mmContext, v3 *currentPos, v3 *frontVec);
-v2 MetersToLatLong(float lat, float lon, v2 pointOfOrigin);
 var PointOfOrigin = (v3){40.42965716240298f, 0, -3.6858290101741833f};
 Color invertColor(Color c) { return (Color){255 - c.r, 255 - c.g, 255 - c.b, c.a}; }
 GLFWwindow *window;
@@ -298,27 +284,6 @@ OverpassQuery *retrieveRoadsForGame(__attribute__((unused)) void *ov)
 }
 
 // Returns the delta in meters for lat and long
-v2 LatLongToMetersDeltas(v3 pointOfOrigin)
-{
-        var scale = getenv("SCALE") ? atof(getenv("SCALE")) : 1;
-        var earthRadius = 6371000;
-        var dlat = (111132.954 - 559.822 * cos(2 * pointOfOrigin.x) + 1.175 * cos(4 * pointOfOrigin.x)) * scale;
-        var dlon = 111132.954 * cos(pointOfOrigin.x) * scale;
-        return (v2){dlat, dlon};
-}
-v2 LatLongToMeters(f32 lat0, f32 lon0, f32 lat1, f32 lon1)
-{
-        f64 R = 6371000.0;
-        f64 dLat = (lat1 - lat0) * DEG2RAD;
-        f64 dLon = (lon1 - lon0) * DEG2RAD;
-        f64 a = sin(dLat / 2) * sin(dLat / 2) + cos(lat0 * DEG2RAD) * cos(lat1 * DEG2RAD) * sin(dLon / 2) * sin(dLon / 2);
-        f64 c = 2 * atan2(sqrt(a), sqrt(1 - a));
-        assert(c >= 0);
-        f64 d = R * c;
-        v2 u = Vector2Normalize((v2){lat1 - lat0, lon1 - lon0});
-        // L("Distance between %f, %f and %f, %f: %fm", lat0, lon0, lat1, lon1, d);
-        return Vector2Scale(u, d);
-}
 int MapCoordsToGraphic(__attribute__((unused)) void *args)
 {
         // List of roads
@@ -333,7 +298,7 @@ int MapCoordsToGraphic(__attribute__((unused)) void *args)
         // L("Distance in meters √(x²+y²): %f\n", Vector2Distance(test0Meters, (v2){0, 0}));
         // L("--------------------------------");
         // Turn all the roads to meters
-        var deltas = LatLongToMetersDeltas(PointOfOrigin);
+        var deltas = LatLongToWorldDeltas(PointOfOrigin);
         for (u32 i = 0; roadsAsPaths[i] != NULL; i++) {
                 var pathRoad = roadsAsPaths[i];
                 var scale = getenv("SCALE") ? atof(getenv("SCALE")) : 1;
@@ -364,6 +329,7 @@ int main(int argc, char *argv[])
 #endif
         parse_options(argc, argv);
         L("The C version is %s %ld\n", __STDC__ == 0 ? "Cstd" : "GNUC", __STDC_VERSION__);
+        L("Max number of textures %d", GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
         // RayThread
         thrd_t testThread;
         PathsList *reg = NULL;
@@ -423,10 +389,6 @@ void setTexCoordScale(float *vertexcoords, float *texcoords, float scale)
                 vertexcoords[i * 3 + 2] = squaredRoad[i].z;
         }
 }
-typedef struct {
-        v3 v3;
-        v2 v2;
-} v3v2;
 typedef struct {
         v3v2 *ver_texcoords;
         u32_3 *indices;
@@ -765,44 +727,41 @@ int gameStuff(__attribute__((unused)) void *args)
         bool RoadsInMeters = false;
         LiteMesh *loadedRoadsL = NULL;
         while (!WindowShouldClose()) {
-                if (IsKeyDown(KEY_L)) {
-                        if (*roadsAsPaths != NULL && !RoadsInMeters) {
-                                L("------------- Now We will generate the vertexes");
-                                thrd_t roadVertexGenThread;
-                                struct {
-                                        PathsList *pathList;
-                                        LiteMesh **meshesAP;
-                                } roadVertexGenArgs = {.pathList = *roadsAsPaths, .meshesAP = &loadedRoadsL};
-                                /// THe roads in meters :
-                                // for (u32 i = 0; (*roadsAsPaths)[i] != NULL; i++) {
-                                //         var pathRoad = (*roadsAsPaths)[i];
-                                //         Ld("Path %d: %p\n", i, pathRoad);
-                                //         for (u32 j = 0; j < pathRoad->nElements; j++) {
-                                //                 Ld("\tPoint %d: %f, %f, %f\n", j, pathRoad->vecs[j].x, pathRoad->vecs[j].y, pathRoad->vecs[j].z);
-                                //         }
-                                // }
+                if (*roadsAsPaths != NULL && !RoadsInMeters) {
+                        L("------------- Now We will generate the vertexes");
+                        thrd_t roadVertexGenThread;
+                        struct {
+                                PathsList *pathList;
+                                LiteMesh **meshesAP;
+                        } roadVertexGenArgs = {.pathList = *roadsAsPaths, .meshesAP = &loadedRoadsL};
+                        /// THe roads in meters :
+                        // for (u32 i = 0; (*roadsAsPaths)[i] != NULL; i++) {
+                        //         var pathRoad = (*roadsAsPaths)[i];
+                        //         Ld("Path %d: %p\n", i, pathRoad);
+                        //         for (u32 j = 0; j < pathRoad->nElements; j++) {
+                        //                 Ld("\tPoint %d: %f, %f, %f\n", j, pathRoad->vecs[j].x, pathRoad->vecs[j].y, pathRoad->vecs[j].z);
+                        //         }
+                        // }
 
-                                var timer = clock();
-                                thrd_create(&roadVertexGenThread, roadVertexGen, &roadVertexGenArgs);
-                                RoadsInMeters = true;
-                                thrd_join(roadVertexGenThread, NULL);
-                                L("----- Time road to vertexes: %fms", (float)(clock() - timer) / CLOCKS_PER_SEC * 1000);
-                                timer = clock();
-                                // Now LiteMesh is loaded
-                                //  we upload it to the GPU
-                                // Save to file the mesh
-                                Ld("LoadedRoadsL.indiceCount: %d\n", loadedRoadsL->indexCount);
-                                Ld("LoadedRoadsL.vertexCount: %d\n", loadedRoadsL->vertexCount);
-                                timer = clock();
-                                glBindVertexArray(vao);
-                                glBindBuffer(GL_ARRAY_BUFFER, vbo);
-                                glBufferData(GL_ARRAY_BUFFER, sizeof(v3v2) * loadedRoadsL->vertexCount, loadedRoadsL->ver_texcoords, GL_STATIC_DRAW);
-                                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-                                glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32_3) * loadedRoadsL->indexCount, loadedRoadsL->indices,
-                                             GL_STATIC_DRAW);
-                                glBindVertexArray(0);
-                                L("-----Time to upload to GPU: %fms ", (float)(clock() - timer) / CLOCKS_PER_SEC * 1000);
-                        }
+                        var timer = clock();
+                        thrd_create(&roadVertexGenThread, roadVertexGen, &roadVertexGenArgs);
+                        RoadsInMeters = true;
+                        thrd_join(roadVertexGenThread, NULL);
+                        L("----- Time road to vertexes: %fms", (float)(clock() - timer) / CLOCKS_PER_SEC * 1000);
+                        timer = clock();
+                        // Now LiteMesh is loaded
+                        //  we upload it to the GPU
+                        // Save to file the mesh
+                        Ld("LoadedRoadsL.indiceCount: %d\n", loadedRoadsL->indexCount);
+                        Ld("LoadedRoadsL.vertexCount: %d\n", loadedRoadsL->vertexCount);
+                        timer = clock();
+                        glBindVertexArray(vao);
+                        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+                        glBufferData(GL_ARRAY_BUFFER, sizeof(v3v2) * loadedRoadsL->vertexCount, loadedRoadsL->ver_texcoords, GL_STATIC_DRAW);
+                        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+                        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32_3) * loadedRoadsL->indexCount, loadedRoadsL->indices, GL_STATIC_DRAW);
+                        glBindVertexArray(0);
+                        L("-----Time to upload to GPU: %fms ", (float)(clock() - timer) / CLOCKS_PER_SEC * 1000);
                 }
                 if (IsKeyDown(KEY_P)) {
                         sleep(1);
@@ -909,7 +868,7 @@ int gameStuff(__attribute__((unused)) void *args)
                 glBindVertexArray(0);
                 EndMode3D();
                 char *uiMessage[40] = {0};
-                v2 latLong = MetersToLatLong(modelPosition.x, modelPosition.z, (v2){PointOfOrigin.x, PointOfOrigin.z});
+                v2 latLong = WorldCoordsToLatLong(modelPosition.x, modelPosition.z, (v2){PointOfOrigin.x, PointOfOrigin.z});
                 asprintf(&uiMessage[0], " Current position in Lat: %f, Long: %f ", latLong.x, latLong.y);
                 asprintf(&uiMessage[1], " Current position in opengl units: %f, Y: %f, Z: %f ", cam.target.x, cam.target.y, cam.target.z);
                 asprintf(&uiMessage[2], " Model position: %f, Y: %f, Z: %f ", modelPosition.x, modelPosition.y, modelPosition.z);
@@ -938,7 +897,7 @@ int gameStuff(__attribute__((unused)) void *args)
                 }
                 DrawText(TextFormat("\nCloser point: %f, %f, %f", closerPoint.x, closerPoint.y, closerPoint.z), GetScreenWidth() * 2 / 3, 10, 20,
                          (Color){255, 255, 255, 120});
-                renderMinimap((struct minimapCTX){.state = kmmInit}, &modelPosition, &frontVec);
+                renderMinimap((struct minimapCTX){.state = kmmInit}, &modelPosition, &frontVec, &PointOfOrigin);
                 EndDrawing();
 
                 thrd_yield();
@@ -1226,18 +1185,7 @@ v3v3 intersecRayPlane(v3 rayOrigin, v3 rayDirection, v3 planeOrigin, v3 planeNor
  * @brief Returns the Lat and long of a point from meters from the origin
  *
  *  */
-v2 MetersToLatLong(float metersFromOriginLat, float metersFromOriginLon, v2 pointOfOrigin)
-{
-        var deltaLat = LatLongToMetersDeltas((v3){pointOfOrigin.x, 0, pointOfOrigin.y});
-        return (v2){pointOfOrigin.x + metersFromOriginLat / deltaLat.x, pointOfOrigin.y - metersFromOriginLon / deltaLat.y};
-}
 
-u64u64 getTileNumber(float lat, float lon, i32 zoom)
-{
-        u64 xtile = (u64)((lon + 180.0) / 360.0 * (1 << zoom));
-        u64 ytile = (u64)((1.0 - log(tan(lat * M_PI / 180.0) + 1.0 / cos(lat * M_PI / 180.0)) / M_PI) / 2.0 * (1 << zoom));
-        return (u64u64){.a = xtile, .b = ytile};
-}
 // struct v3$2$GP {
 //         union {
 //                 struct {
@@ -1259,225 +1207,3 @@ u64u64 getTileNumber(float lat, float lon, i32 zoom)
 // };
 
 // Mallocs su64.datac
-su64 getTileURL(u64 zoom, u64 x, u64 y)
-{
-        const char *url = "https://a.tile.openstreetmap.org/%d/%d/%d.png";
-        su64 urlQuery;
-        urlQuery.size = asprintf(&urlQuery.datac, url, zoom, x, y);
-        assert(urlQuery.size != -1);
-        return urlQuery;
-}
-
-#include <curl/curl.h>
-static size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp)
-{
-        if (size * nmemb == 0)
-                return 0;
-        size_t realsize = size * nmemb;
-        su64 *mem = userp;
-        char *ptr = realloc(mem->data, mem->size + realsize + 1);
-        if (!ptr) {
-                Le("not enough memory (realloc returned NULL)\n");
-                return 0;
-        }
-        mem->datav = ptr;
-        memcpy(&(mem->data[mem->size]), buffer, realsize);
-        mem->size += realsize;
-        mem->data[mem->size] = 0; // Null ended
-
-        return realsize;
-}
-
-su64 downloadImage(su64 urlQuery)
-{
-        CURLcode ret;
-        CURL *hnd;
-        struct curl_slist *slist1;
-        slist1 = NULL;
-        slist1 = curl_slist_append(slist1, "accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
-        slist1 = curl_slist_append(slist1, "accept-language: en-US,en;q=0.6");
-        slist1 = curl_slist_append(slist1, "user-agent: vroads");
-
-        hnd = curl_easy_init();
-        curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, 102400L);
-        curl_easy_setopt(hnd, CURLOPT_URL, urlQuery.datac);
-        curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, slist1);
-        curl_easy_setopt(hnd, CURLOPT_USERAGENT, "curl/8.6.0");
-        curl_easy_setopt(hnd, CURLOPT_MAXREDIRS, 50L);
-        curl_easy_setopt(hnd, CURLOPT_HTTP_VERSION, (long)CURL_HTTP_VERSION_2TLS);
-        curl_easy_setopt(hnd, CURLOPT_FTP_SKIP_PASV_IP, 1L);
-        curl_easy_setopt(hnd, CURLOPT_TCP_KEEPALIVE, 1L);
-        curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, write_data);
-        curl_easy_setopt(hnd, CURLOPT_TCP_KEEPALIVE, 1L);
-        curl_easy_setopt(hnd, CURLOPT_TIMEOUT, 30L);
-
-        su64 dmem = {.data = malloc(0), .size = 0};
-        curl_easy_setopt(hnd, CURLOPT_WRITEDATA, &dmem);
-        L("Downloading image from %s", urlQuery.datac);
-
-        ret = curl_easy_perform(hnd);
-        L("Downloaded image from %s", urlQuery.datac);
-        L("Code: %d", ret);
-
-        curl_easy_cleanup(hnd);
-        hnd = NULL;
-        curl_slist_free_all(slist1);
-        slist1 = NULL;
-        return dmem;
-}
-su64 getTileImage(i32 zoom, i32 x, i32 y)
-{
-        var urlQuery = getTileURL(zoom, x, y);
-        Lw("Requesting image (z:%d, x:%d, y:%d) from %s", zoom, x, y, urlQuery.datac);
-        var dmem = downloadImage(urlQuery);
-        free(urlQuery.data);
-        return dmem;
-}
-
-const v3v2 minimapVertexes[] = {
-    {.5,.5, 0, .25,.25},
-    {.9,.5, 0, .75,.25},
-    {.5,.9, 0, .25,.75},
-    {.5,.9, 0, .25,.75},
-    {.9,.5, 0, .75,.25},
-    {.9,.9, 0, .75,.75},
-    
-};
-bool checkCompileErrors(GLuint shader, const char *type)
-{
-        GLint success;
-        GLchar infoLog[1024];
-        if (strcmp(type, "PROGRAM") != 0) {
-                glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-                if (!success) {
-                        glGetShaderInfoLog(shader, 1024, NULL, infoLog);
-                        Le("ERROR::SHADER_COMPILATION_ERROR of type: %s\n%s\n", type, infoLog);
-                }
-        } else {
-                glGetProgramiv(shader, GL_LINK_STATUS, &success);
-                if (!success) {
-                        glGetProgramInfoLog(shader, 1024, NULL, infoLog);
-                        Le("ERROR::PROGRAM_LINKING_ERROR of type: %s\n%s\n", type, infoLog);
-                }
-        }
-        return success;
-}
-
-void renderMinimap(struct minimapCTX mmContexti, v3 *currentPos, v3 *frontVec)
-{
-        static struct minimapCTX mmContext = {.state = kmmInit};
-        switch (mmContext.state) {
-        case kmmInit:
-                // Init vao and vbo
-                {
-                        const char *vxStr __clean = LoadFileText("resources/minimapvs.glsl");
-                        const char *fgStr __clean = LoadFileText("resources/minimapfs.glsl");
-                        // vertex shader
-                        var vertex = glCreateShader(GL_VERTEX_SHADER);
-                        glShaderSource(vertex, 1, &vxStr, NULL);
-                        glCompileShader(vertex);
-                        if (checkCompileErrors(vertex, "VERTEX") == 0) {
-                                Le("Error loading vertex shader");
-                                mmContext.state = kError;
-                                break;
-                        }
-                        
-                        // fragment Shader
-                        var fragment = glCreateShader(GL_FRAGMENT_SHADER);
-                        glShaderSource(fragment, 1, &fgStr, NULL);
-                        glCompileShader(fragment);
-                        if (checkCompileErrors(fragment, "FRAGMENT") == 0) {
-                                Le("Error loading fragment shader");
-                                mmContext.state = kError;
-                                break;
-                        }
-                        // shader Program
-                        var ProgID = glCreateProgram();
-                        glAttachShader(ProgID, vertex);
-                        glAttachShader(ProgID, fragment);
-                        glLinkProgram(ProgID);
-                        if (checkCompileErrors(ProgID, "PROGRAM") == 0) {
-                                Le("Error linking program");
-                                mmContext.state = kError;
-                                break;
-                        }
-
-                        var minimapShaderId = ProgID;
-                        Lw("Loaded minimap shader: %d", minimapShaderId);
-                        mmContext.shaderId = minimapShaderId;
-                        GLuint vao, vbo;
-                        glGenVertexArrays(1, &vao);
-                        glGenBuffers(1, &vbo);
-                        glBindVertexArray(vao);
-                        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-                        glBufferData(GL_ARRAY_BUFFER, sizeof(v3v2)*6, minimapVertexes, GL_STATIC_DRAW);
-                        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(v3v2), (void *)0);
-                        glEnableVertexAttribArray(0);
-                        // Find the index of textcoords
-                        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(v3v2), (void *)sizeof(v3));
-                        glEnableVertexAttribArray(1);
-                        glEnableVertexAttribArray(0);
-                        mmContext.vao = vao;
-                        mmContext.state = kmmEmptyQueu;
-                }
-                break;
-        case kmmEmptyQueu:
-        case kDataReady:
-                // Load the texture
-                {
-                        Lw("Context: vao: %d, texture: %d", mmContext.vao, mmContext.textureId);
-                        const i32 zoom = 10;
-                        var latLong = MetersToLatLong(currentPos->x, currentPos->z, (v2){PointOfOrigin.x, PointOfOrigin.z});
-                        var tile = getTileNumber(latLong.x, latLong.y, 10);
-                        var tileImage = getTileImage(zoom, tile.a, tile.b);
-                        assert(tileImage.datac != NULL);
-                        var img = LoadImageFromMemory(".png", tileImage.data, tileImage.size);
-                        ImageFlipVertical(&img);
-                        assert(img.data != NULL);
-                        L("Loaded image : %d, %d", img.width, img.height);
-                        GLuint minimapTexId;
-                        glGenTextures(1, &minimapTexId);
-                        glBindTexture(GL_TEXTURE_2D, minimapTexId);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // set texture wrapping to GL_REPEAT (default wrapping method)
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                        // set texture filtering parameters
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img.width, img.height, 0, GL_RGB, GL_UNSIGNED_BYTE, img.data);
-                        glGenerateMipmap(GL_TEXTURE_2D);
-                        glUseProgram(mmContext.shaderId);
-                        UnloadImage(img);
-                        mmContext.textureId = minimapTexId;
-                        mmContext.state = kReady;
-                        Lw("Loaded texture: %d", minimapTexId);
-                }
-                break;
-        case kDataLoading:
-                break;
-        case kReady:
-                // Draw minimap triangles with the texture
-                glUseProgram(mmContext.shaderId);
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, mmContext.textureId);
-                glUniform1f(glGetUniformLocation(mmContext.shaderId, "rotationRadians"), atan2(frontVec->z, frontVec->x));
-                glBindVertexArray(mmContext.vao);
-                glDrawArrays(GL_TRIANGLES, 0, 6);
-                glBindVertexArray(0);
-                break;
-        case kError:
-                break;
-        default:
-                assert(false);
-                break;
-        }
-        // var positionx = GetScreenWidth() * 6 / 8;
-        // var positiony = GetScreenHeight() * 1 / 10;
-        // var scale = .5;
-        // Rectangle source = {0.0f, 0.0f, (float)minimapText.width, (float)minimapText.height};
-        // Rectangle dest = {positionx, positiony, (float)minimapText.width * scale, (float)minimapText.height * scale};
-        // v2 origin = {0, 0};
-        // var color = WHITE;
-        //
-        // rlRotatef(atan2(frontVec->z, frontVec->x) * RAD2DEG, 0, 0, 1);
-        // DrawTexturePro(minimapText, source, dest, origin, 0, color);
-}

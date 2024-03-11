@@ -2,17 +2,7 @@
 #include "0_GlobalIncludes.h"
 float tic;
 float toc;
-#include <signal.h>
-
-#include <libgen.h>
-#include <raylib.h>
-#include <raymath.h>
-#include <rlgl.h>
-#include <search.h>
-
 #include "overpassQueries.h"
-#include <log.h>
-#include <systemd/sd-journal.h>
 
 #define ISNULL(X, FMT, ...)                                                                                                                          \
         if (X == 0) {                                                                                                                                \
@@ -24,19 +14,6 @@ float toc;
         (X) { 0 }
 #define ZE(X)                                                                                                                                        \
         (struct X) {}
-
-typedef Vector2 v2;
-#define v2str "(%f,%f)"
-#define v2var(X) (X).x, (X).y
-typedef Vector3 v3;
-#define v3str "(%f,%f,%f)"
-#define v3var(X) (X).x, (X).y, (X).z
-typedef Vector4 v4;
-#define v4str "(%f,%f,%f,%f)"
-#define v4var(X) X.x, X.y, X.z, X.a
-typedef Matrix m4;
-#define m4str v4str v4str v4str v4str
-#define m4var(X) X.m0, X.m4, X.m8, X.m12, X.m1, X.m5, X.m9, X.m13, X.m2, X.m6, X.m10, X.m14, X.m3, X.m7, X.m11, X.m15
 
 double deg2rad(double deg) { return (deg * M_PI / 180); }
 double haversine_distance(double lat1, double lon1, double lat2, double lon2)
