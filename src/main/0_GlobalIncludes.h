@@ -1,6 +1,9 @@
 #pragma once
-#include "log.h"
+// clang-format off
 #include <glad.h>
+// clang-format on
+
+#include "log.h"
 #include <GLFW/glfw3.h>
 #include <assert.h>
 #include <ctype.h>
@@ -39,3 +42,11 @@ typedef struct {
         v3 v3;
         v2 v2;
 } v3v2;
+
+GLuint vroadLoadTextureClamped(Image *img);
+void texClamped();
+void texLinear();
+void texMipMap() ;
+void texClamped$Linear();
+void texClamped$Linear();
+u32u32 vroadGenv3v2$vao$vbo(u32 count, v3v2 minimapVertexes[count]);

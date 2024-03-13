@@ -1,15 +1,61 @@
 #include "minimap.h"
 #include "overpassQueries.h"
+#include "rlgl.h"
 
-u64u64 getTileNumber(float lat, float lon, i32 zoom)
+GLuint LoadTextureMarker(Image *marker)
 {
-        u64 xtile = (u64)((lon + 180.0) / 360.0 * (1 << zoom));
-        u64 ytile = (u64)((1.0 - log(tan(lat * M_PI / 180.0) + 1.0 / cos(lat * M_PI / 180.0)) / M_PI) / 2.0 * (1 << zoom));
-        return (u64u64){.a = xtile, .b = ytile};
+        GLuint markerTexId;
+        glGenTextures(1, &markerTexId);
+        assert(markerTexId != 0);
+        glBindTexture(GL_TEXTURE_2D, markerTexId);
+        texClamped$Linear();
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, marker->width, marker->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, marker->data);
+        texMipMap();
+        return markerTexId;
+}
+
+f32f32 getTileNumber(float lat, float lon, i32 zoom)
+{
+        var xtile = ((lon + 180.0) / 360.0 * (1 << zoom));
+        var ytile = ((1.0 - log(tan(lat * M_PI / 180.0) + 1.0 / cos(lat * M_PI / 180.0)) / M_PI) / 2.0 * (1 << zoom));
+        return (f32f32){.y = xtile, .x = ytile};
+}
+
+struct relatedTiles {
+        i32 zoom;
+        u64 ntiles;
+        u64u64 tiles[];
+};
+
+/**
+ * @brief Get the tile numbers object
+ * Returns the tile for a given lat/long and zoom level
+ * and the ones surrounding it at a given  distance
+ * @param lat Latitude
+ * @param lon Longitude
+ * @param zoom Zoom level
+ * @param distance Distance from the center tile
+ */
+struct relatedTiles __attr(malloc) * getTileNumbers(f32 lat, f32 lon, i32 zoom, i64 distance)
+{
+        var center = getTileNumber(lat, lon, zoom);
+        var ntiles = 1 + 8 * distance;
+        struct relatedTiles *result = malloc(sizeof(u64u64) + ntiles * sizeof(u64u64));
+        result->ntiles = ntiles;
+
+        Lw("Allocated %lu bytes for %lu tiles", result->ntiles, ntiles);
+        result->zoom = zoom;
+        for (i64 i = 0; i < ntiles; i++) {
+                var x = center.a + i % 3 - 1;
+                var y = center.b + i / 3 - 1;
+                result->tiles[i].a = x;
+                result->tiles[i].b = y;
+        }
+        return result;
 }
 su64 TileURL(u64 zoom, u64 x, u64 y)
 {
-        const char *url = "https://a.tile.openstreetmap.org/%d/%d/%d.png";
+        const char *url = "https://tile.openstreetmap.org/%d/%d/%d.png";
         su64 urlQuery;
         urlQuery.size = asprintf(&urlQuery.datac, url, zoom, x, y);
         assert(urlQuery.size != -1);
@@ -81,15 +127,26 @@ su64 getTileImage(i32 zoom, i32 x, i32 y)
         return dmem;
 }
 
+// const v3v2 minimapVertexes[] = {
+//     {.5,.5, 0, .25,.25},
+//     {.9,.5, 0, .75,.25},
+//     {.5,.9, 0, .25,.75},
+//     {.5,.9, 0, .25,.75},
+//     {.9,.5, 0, .75,.25},
+//     {.9,.9, 0, .75,.75},
+// };
+// Entire scree
 const v3v2 minimapVertexes[] = {
-    {.5,.5, 0, .25,.25},
-    {.9,.5, 0, .75,.25},
-    {.5,.9, 0, .25,.75},
-    {.5,.9, 0, .25,.75},
-    {.9,.5, 0, .75,.25},
-    {.9,.9, 0, .75,.75},
-    
+    // clang-format off
+    {-.5, -.5, 0, 0, 1},   /// 
+    {.5, -.5, 0, 1, 1},   /// 
+    {-.5, .5, 0, 0, 0},   /// 
+    {-.5, .5, 0, 0, 0},   /// 
+    {.5, -.5, 0, 1, 1},   /// 
+    {.5, .5, 0, 1, 0},   ///
+    // clang-format on
 };
+
 bool checkCompileErrors(GLuint shader, const char *type)
 {
         GLint success;
@@ -109,11 +166,116 @@ bool checkCompileErrors(GLuint shader, const char *type)
         }
         return success;
 }
-
-int renderMinimap(struct minimapCTX mmContexti, v3 *currentPos, v3 *frontVec, v3 * PointOfOrigin)
+f32f32 currentTileFromLatLong(struct minimapCTX *mmContext, v3 *currentPos, v3 *frontVec, v3 *PointOfOrigin)
 {
-        static struct minimapCTX mmContext = {.state = kmmInit};
-        switch (mmContext.state) {
+        var latLong = WorldCoordsToLatLong(currentPos->x, currentPos->z, (v2){PointOfOrigin->x, PointOfOrigin->z});
+        var tile = getTileNumber(latLong.x, latLong.y, mmContext->zoom);
+        return tile;
+}
+
+bool AreDifferentTilesUF(u32u32 tileA, f32f32 tileB)
+{
+        var IsSameA = tileA.a == (u32)tileB.a;
+        var IsSameB = tileA.b == (u32)tileB.b;
+        return !(IsSameA && IsSameB);
+}
+int renderMinimap(struct minimapCTX *mmContext, v3 *currentPos, v3 *frontVec, v3 *PointOfOrigin)
+{
+        mmContext->frameCount++;
+        switch (mmContext->state) {
+        case kmmEmptyQueu: {
+                // Here we should check if the old data should be discarded
+                var hasZoomChanged = mmContext->oldZoom != mmContext->zoom;
+                var currTile = currentTileFromLatLong(mmContext, currentPos, frontVec, PointOfOrigin);
+                var hasTileChange = AreDifferentTilesUF(mmContext->OldTileXY, currTile);
+
+                if (hasZoomChanged || hasTileChange) {
+                    Lw("Zoom changed from %d to %d", mmContext->oldZoom, mmContext->zoom);
+                    Lw("Tile changed from (%d, %d) to (%.2f, %.2f)", mmContext->OldTileXY.a, mmContext->OldTileXY.b, currTile.a, currTile.b);
+                        goto kDataReadyBlock;
+                } else {
+                        goto kReadyBlock;
+                }
+
+        } break;
+        kDataReadyBlock:
+        case kDataReady:
+                // Load the texture
+                {
+                        // check if the texture is already Loaded
+                        if (mmContext->textureIds != 0) {
+                                glDeleteTextures(1, &mmContext->textureIds);
+                                Lw("Deleted texture: %d", mmContext->textureIds);
+                        }
+
+                        Lw("Context: vao: %d, texture: %d...", mmContext->vao, mmContext->textureIds);
+                        var latLong = WorldCoordsToLatLong(currentPos->x, currentPos->z, (v2){PointOfOrigin->x, PointOfOrigin->z});
+                        var tile = getTileNumber(latLong.x, latLong.y, mmContext->zoom);
+                        // var tNs = getTileNumbers(latLong.x, latLong.y, mmContext->zoom, 1);
+
+                        L("Tile: (%.2f, %.2f)", tile.a, tile.b);
+                        // This is inverted because I use a/x as lat and b/y as long
+                        var tileImage = getTileImage(mmContext->zoom, tile.b, tile.a);
+
+                        assert(tileImage.datac != NULL);
+                        var img = LoadImageFromMemory(".png", tileImage.data, tileImage.size);
+                        // ImageRotateCW(&img);
+                        assert(img.data != NULL);
+                        L("Loaded image : %d, %d", img.width, img.height);
+                        GLuint minimapTexId;
+
+                        minimapTexId = vroadLoadTextureClamped(&img);
+
+                        mmContext->textureIds = minimapTexId;
+                        L("Loaded texture: %d", minimapTexId);
+                        UnloadImage(img);
+
+                        mmContext->oldZoom = mmContext->zoom;
+                        mmContext->OldTileXY = (u32u32){tile.a, tile.b};
+                        mmContext->state = kReady;
+                }
+                break;
+        case kDataLoading:
+                break;
+        kReadyBlock:
+        case kReady: {
+                // Check current tile
+                //  Draw minimap triangles with the texture
+                // var latLong = WorldCoordsToLatLong(currentPos->x, currentPos->z, (v2){PointOfOrigin->x, PointOfOrigin->z});
+                var tile = currentTileFromLatLong(mmContext, currentPos, frontVec, PointOfOrigin);
+                var tileDecimals = (f32f32){.a = tile.a - (i32)tile.a, .b = tile.b - (i32)tile.b};
+                // Lw("Portion of current tile: (%f32, %f32)", tileDecimals.a, tileDecimals.b);
+                glUseProgram(mmContext->shaderId);
+                glUniform2f(5, mmContext->translation.x, mmContext->translation.y); // Translate Window
+                                                                                    //
+                // Draw the minimap
+                rlSetUniformMatrix(4, MatrixScale(mmContext->scale.x, mmContext->scale.y, mmContext->scale.z));
+                rlSetUniformMatrix(3, MatrixRotateZ(0));
+                glUniform2f(6, tileDecimals.a, tileDecimals.b); // Center image
+                // glUniform2f(6, 0, 0); // Center image
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, mmContext->textureIds);
+                glBindVertexArray(mmContext->vao);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+
+                // Draw the marker
+                // Marker
+                rlSetUniformMatrix(4, MatrixScale(.025, .025, 1));
+                rlSetUniformMatrix(3, MatrixRotateZ(atan2(frontVec->z, -frontVec->x)));
+                // Center image
+                glUniform2f(6, .5, .5);
+                // Rotation
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, mmContext->markerTextureId);
+                glBindVertexArray(mmContext->vao);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+
+                glBindVertexArray(0);
+                mmContext->state = kmmEmptyQueu;
+        } break;
+        case kError:
+                break;
         case kmmInit:
                 // Init vao and vbo
                 {
@@ -125,17 +287,16 @@ int renderMinimap(struct minimapCTX mmContexti, v3 *currentPos, v3 *frontVec, v3
                         glCompileShader(vertex);
                         if (checkCompileErrors(vertex, "VERTEX") == 0) {
                                 Le("Error loading vertex shader");
-                                mmContext.state = kError;
+                                mmContext->state = kError;
                                 break;
                         }
-                        
                         // fragment Shader
                         var fragment = glCreateShader(GL_FRAGMENT_SHADER);
                         glShaderSource(fragment, 1, &fgStr, NULL);
                         glCompileShader(fragment);
                         if (checkCompileErrors(fragment, "FRAGMENT") == 0) {
                                 Le("Error loading fragment shader");
-                                mmContext.state = kError;
+                                mmContext->state = kError;
                                 break;
                         }
                         // shader Program
@@ -145,73 +306,32 @@ int renderMinimap(struct minimapCTX mmContexti, v3 *currentPos, v3 *frontVec, v3
                         glLinkProgram(ProgID);
                         if (checkCompileErrors(ProgID, "PROGRAM") == 0) {
                                 Le("Error linking program");
-                                mmContext.state = kError;
+                                mmContext->state = kError;
                                 break;
                         }
 
+                        // Load the position of the frame
                         var minimapShaderId = ProgID;
                         Lw("Loaded minimap shader: %d", minimapShaderId);
-                        mmContext.shaderId = minimapShaderId;
-                        GLuint vao, vbo;
-                        glGenVertexArrays(1, &vao);
-                        glGenBuffers(1, &vbo);
-                        glBindVertexArray(vao);
-                        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-                        glBufferData(GL_ARRAY_BUFFER, sizeof(v3v2)*6, minimapVertexes, GL_STATIC_DRAW);
-                        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(v3v2), (void *)0);
-                        glEnableVertexAttribArray(0);
-                        // Find the index of textcoords
-                        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(v3v2), (void *)sizeof(v3));
-                        glEnableVertexAttribArray(1);
-                        glEnableVertexAttribArray(0);
-                        mmContext.vao = vao;
-                        mmContext.state = kmmEmptyQueu;
+                        mmContext->shaderId = minimapShaderId;
+                        var vGen = vroadGenv3v2$vao$vbo(6, minimapVertexes);
+                        var vao = vGen.a;
+                        var vbo = vGen.b;
+
+                        // Load the texture that represents the person in the minimap
+                        var marker = LoadImage("resources/marker.png"); // RGBA
+                        ImageFlipVertical(&marker);
+                        GLuint markerTexId = LoadTextureMarker(&marker);
+                        UnloadImage(marker);
+                        mmContext->markerTextureId = markerTexId;
+                        Lw("Loaded marker texture: %d", markerTexId);
+                        glUseProgram(mmContext->shaderId);
+                        glUseProgram(0);
+
+                        // Next State
+                        mmContext->vao = vao;
+                        mmContext->state = kmmEmptyQueu;
                 }
-                break;
-        case kmmEmptyQueu:
-        case kDataReady:
-                // Load the texture
-                {
-                        Lw("Context: vao: %d, texture: %d", mmContext.vao, mmContext.textureId);
-                        const i32 zoom = 10;
-                        var latLong = WorldCoordsToLatLong(currentPos->x, currentPos->z, (v2){PointOfOrigin->x, PointOfOrigin->z});
-                        var tile = getTileNumber(latLong.x, latLong.y, 10);
-                        var tileImage = getTileImage(zoom, tile.a, tile.b);
-                        assert(tileImage.datac != NULL);
-                        var img = LoadImageFromMemory(".png", tileImage.data, tileImage.size);
-                        ImageFlipVertical(&img);
-                        assert(img.data != NULL);
-                        L("Loaded image : %d, %d", img.width, img.height);
-                        GLuint minimapTexId;
-                        glGenTextures(1, &minimapTexId);
-                        glBindTexture(GL_TEXTURE_2D, minimapTexId);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // set texture wrapping to GL_REPEAT (default wrapping method)
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                        // set texture filtering parameters
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img.width, img.height, 0, GL_RGB, GL_UNSIGNED_BYTE, img.data);
-                        glGenerateMipmap(GL_TEXTURE_2D);
-                        glUseProgram(mmContext.shaderId);
-                        UnloadImage(img);
-                        mmContext.textureId = minimapTexId;
-                        mmContext.state = kReady;
-                        Lw("Loaded texture: %d", minimapTexId);
-                }
-                break;
-        case kDataLoading:
-                break;
-        case kReady:
-                // Draw minimap triangles with the texture
-                glUseProgram(mmContext.shaderId);
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, mmContext.textureId);
-                glUniform1f(glGetUniformLocation(mmContext.shaderId, "rotationRadians"), atan2(frontVec->z, frontVec->x));
-                glBindVertexArray(mmContext.vao);
-                glDrawArrays(GL_TRIANGLES, 0, 6);
-                glBindVertexArray(0);
-                break;
-        case kError:
                 break;
         default:
                 assert(false);

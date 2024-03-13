@@ -214,7 +214,7 @@ struct elements json_parse(su64 data)
                         u64 id = json_object_get_int64(node);
                         struct node *foundNode = node_by_id(id, all_nodes, max_nodes);
                         if (!foundNode) {
-                                Le("Node %lu not found", id);
+                                // Le("Node %lu not found", id);
                                 exit(1);
                         }
                         ways[i].nodes[j] = *foundNode;
@@ -334,7 +334,7 @@ f32 way_getLevel(json_object *element)
         }
         // If it's not a tunnel:building_passage and isCovered, let's put it at -.5
         if (!isTunnel) {
-                if (isCovered && strncmp(tunnelDesc, "building_passage", sizeof("building_passage")) == 0)
+                if (isCovered && (isTunnel  && strncmp(tunnelDesc, "building_passage", sizeof("building_passage")) == 0))
                         return -.7;
                 if (-.1 < layer && layer <= .1) {
                         return .5;

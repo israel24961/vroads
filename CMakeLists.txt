@@ -3,11 +3,11 @@ cmake_minimum_required(VERSION 3.5) # setting this is required
 project(vroads)            # this sets the project name
 #set debug flags if debug build
 if(CMAKE_BUILD_TYPE MATCHES Debug)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -ggdb -g3 -O0 -Wall -Wextra   -fsanitize=address -Wno-missing-braces")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -ggdb -g3 -O0 -Wall -Wextra -Wfloat-equal -fverbose-asm  --coverage -fsanitize=undefined -Wno-missing-braces")
     add_definitions(-DDEBUG)
     #elseif (CMAKE_BUILD_TYPE MATCHES Release)
 else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -O3 -fsanitize=address")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -O3 -fsanitize=undefined")
     add_definitions(-DRelease)
 endif()
 
@@ -25,12 +25,14 @@ file(GLOB_RECURSE data resources/*)
 ## target definitions #########################################################
 ###############################################################################
 
-add_executable(${PROJECT_NAME} src/main/main.c
+add_executable(${PROJECT_NAME} 
+    src/main/0_GlobalIncludes.c
     src/main/overpassQueries.c
     src/main/fileOperations.c
     src/glad/glad.c
     src/glad/khrplatform.h 
     src/minimap/minimap.c
+    src/main/main.c
     )
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY C_STANDARD 23)
@@ -76,6 +78,8 @@ endif()
 
 
 add_subdirectory(extern/logc)
+add_subdirectory(extern/easycringelib)
+
 # This defines the variables Boost_LIBRARIES that containts all library names
 # that we need to link into the program.
 
@@ -83,6 +87,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC extern/logc/src
     PUBLIC extern/easycringelib/src
     )
+
 target_link_directories(${PROJECT_NAME} 
     PUBLIC extern/logc
     )

@@ -9,14 +9,30 @@ GLFWwindow *window;
 typedef float Radian;
 typedef float Grades;
 int gameStuff(void *args);
-void processCam(CameraMode cm, Camera *cam);
+f32 processCam(CameraMode cm, Camera *cam);
 
+typedef struct {
+        v3v2 *ver_texcoords;
+        u32_3 *indices;
+        u32 vertexCount;
+        u32 indexCount;
+} LiteMesh;
 typedef struct {
         i64i64 i64i64;
         v3 v3;
         m4 transform;
         v3 nextPost;
 } i64i64v3;
+
+typedef pathPoints *PathsList;
+
+struct renderRoadsArgs {
+        PathsList **roadsAsPaths;
+        bool *RoadsInMeters;
+        LiteMesh **loadedRoadsLP;
+        GLuint vao, vbo, ebo;
+};
+int renderRoads(struct renderRoadsArgs *args);
 
 i64i64v3 runningGuyNF(struct ModelAnimation *anims, Model *model, v3 *frontVec, v3 *currentPos);
 enum g_CKind { dot, circle, greendot };
@@ -246,7 +262,6 @@ pathPoints *WayToCoordsPaths(struct way *w)
         }
         return resp;
 }
-typedef pathPoints *PathsList;
 /// Return overpass result as a string
 OverpassQuery *retrieveRoadsForGame(__attribute__((unused)) void *ov)
 {
@@ -363,7 +378,7 @@ v3 renderRayAndFloorIntersection(v3 camTarget, v3 frontVec, v3 FloorPoint, v3 Fl
         // Draw a ray from the camera to the floor
 
         v3v3 viewRay = intersecRayPlane(camTarget, frontVec, FloorPoint, FloorNormal);
-        if (viewRay.lineStart.x == 0 && viewRay.lineStart.y == 0 && viewRay.lineStart.z == 0)
+        if (viewRay.lineStart.x <= 0.01 && viewRay.lineStart.y <= 0.01 && viewRay.lineStart.z <= 0.01)
                 return (v3){0, 0, 0};
         // DrawLine3D(Vector3Add(viewRay.lineStart, (v3){0, -0.1, 0}), viewRay.lineEnd, RED);
         //  Draw a circle in the floor
@@ -389,16 +404,7 @@ void setTexCoordScale(float *vertexcoords, float *texcoords, float scale)
                 vertexcoords[i * 3 + 2] = squaredRoad[i].z;
         }
 }
-typedef struct {
-        v3v2 *ver_texcoords;
-        u32_3 *indices;
-        u32 vertexCount;
-        u32 indexCount;
-} LiteMesh;
 /// Generates a unique mesh from a list of paths
-bool v3v2IsZero(v3v2 *v) { return v->v3.x == 0 && v->v3.y == 0 && v->v3.z == 0 && v->v2.x == 0 && v->v2.y == 0; }
-bool v3IsZero(v3 v) { return v.x == 0 && v.y == 0 && v.z == 0; }
-bool v2IsZero(v2 v) { return v.x == 0 && v.y == 0; }
 
 /// Generate a road from a path
 /// If mesh is not NULL, it will be used to store the mesh, vtxCoords should already be allocated as a List(the last available position will be zero
@@ -592,7 +598,7 @@ void sigsevHandler(int sig)
 }
 int gameStuff(__attribute__((unused)) void *args)
 {
-        signal(SIGSEGV, sigsevHandler);
+        // signal(SIGSEGV, sigsevHandler);
         _raylibInit();
         PathsList **roadsAsPaths = args;
 #ifdef DEBUG
@@ -615,8 +621,6 @@ int gameStuff(__attribute__((unused)) void *args)
         model.transform = MatrixMultiply(model.transform, MatrixRotateX(90 * DEG2RAD));
         int animsCount = 0;
         ModelAnimation *animGirl = LoadModelAnimations("resources/bettergirl.glb", &animsCount);
-        var animGuy = LoadModelAnimations("resources/guy.iqm", &animsCount);
-        L("Loaded animations: %d", animsCount);
         for (int i = 0; i < animsCount; i++) {
                 L("Animation %d: %s", i, animGirl[i].name);
         }
@@ -726,49 +730,19 @@ int gameStuff(__attribute__((unused)) void *args)
 
         bool RoadsInMeters = false;
         LiteMesh *loadedRoadsL = NULL;
-        while (!WindowShouldClose()) {
-                if (*roadsAsPaths != NULL && !RoadsInMeters) {
-                        L("------------- Now We will generate the vertexes");
-                        thrd_t roadVertexGenThread;
-                        struct {
-                                PathsList *pathList;
-                                LiteMesh **meshesAP;
-                        } roadVertexGenArgs = {.pathList = *roadsAsPaths, .meshesAP = &loadedRoadsL};
-                        /// THe roads in meters :
-                        // for (u32 i = 0; (*roadsAsPaths)[i] != NULL; i++) {
-                        //         var pathRoad = (*roadsAsPaths)[i];
-                        //         Ld("Path %d: %p\n", i, pathRoad);
-                        //         for (u32 j = 0; j < pathRoad->nElements; j++) {
-                        //                 Ld("\tPoint %d: %f, %f, %f\n", j, pathRoad->vecs[j].x, pathRoad->vecs[j].y, pathRoad->vecs[j].z);
-                        //         }
-                        // }
+        struct renderRoadsArgs renderRoadsArgs = {
+            .roadsAsPaths = roadsAsPaths, .RoadsInMeters = &RoadsInMeters, .loadedRoadsLP = &loadedRoadsL, .vao = vao, .vbo = vbo, .ebo = ebo};
+        struct minimapCTX minimapState = {.state = kmmInit, .zoom = 16, .scale = {.45, .45, 0}, .translation = {.75, .75, 0}};
 
-                        var timer = clock();
-                        thrd_create(&roadVertexGenThread, roadVertexGen, &roadVertexGenArgs);
-                        RoadsInMeters = true;
-                        thrd_join(roadVertexGenThread, NULL);
-                        L("----- Time road to vertexes: %fms", (float)(clock() - timer) / CLOCKS_PER_SEC * 1000);
-                        timer = clock();
-                        // Now LiteMesh is loaded
-                        //  we upload it to the GPU
-                        // Save to file the mesh
-                        Ld("LoadedRoadsL.indiceCount: %d\n", loadedRoadsL->indexCount);
-                        Ld("LoadedRoadsL.vertexCount: %d\n", loadedRoadsL->vertexCount);
-                        timer = clock();
-                        glBindVertexArray(vao);
-                        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-                        glBufferData(GL_ARRAY_BUFFER, sizeof(v3v2) * loadedRoadsL->vertexCount, loadedRoadsL->ver_texcoords, GL_STATIC_DRAW);
-                        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-                        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32_3) * loadedRoadsL->indexCount, loadedRoadsL->indices, GL_STATIC_DRAW);
-                        glBindVertexArray(0);
-                        L("-----Time to upload to GPU: %fms ", (float)(clock() - timer) / CLOCKS_PER_SEC * 1000);
-                }
+        while (!WindowShouldClose()) {
                 if (IsKeyDown(KEY_P)) {
                         sleep(1);
                         BeginDrawing();
                         EndDrawing();
                         continue;
                 }
+                renderRoads(&renderRoadsArgs);
+                //
                 // UpdateCamera(&cam, CAMERA_THIRD_PERSON);
                 struct inputArgs iargs = {.cam = &cam};
                 modelPosition = (Vector3){cam.target.x, cam.target.y - 1, cam.target.z};
@@ -787,7 +761,10 @@ int gameStuff(__attribute__((unused)) void *args)
                 i64 currentAnimation = resp.i64i64.a;
                 i64 animFrameCounter = resp.i64i64.b;
                 v3 nextPos = resp.nextPost;
-                processCam(CAMERA_THIRD_PERSON, &cam);
+                var camRadius=processCam(CAMERA_THIRD_PERSON, &cam);
+                if (camRadius){//Skip if camRadius is Zero
+                    minimapState.zoom=18-camRadius/200;
+                }
 
                 BeginDrawing();
                 BeginMode3D(cam);
@@ -814,7 +791,7 @@ int gameStuff(__attribute__((unused)) void *args)
                                 for (u32 j = 0; j < pathRoad->nElements; j++) {
                                         var point = pathRoad->vecs[j];
                                         f32 newDistance = Vector2Distance((v2){point.x, point.z}, (v2){ballPoint.x, ballPoint.z});
-                                        if (closerPoint.x == 0 && closerPoint.y == 0 && closerPoint.z == 0) {
+                                        if (closerPoint.x <= .001 && closerPoint.y <= .001 && closerPoint.z <= .001) {
                                                 secondCloserPoint = point;
                                                 closerPoint = point;
                                                 minPath = pathRoad;
@@ -832,7 +809,8 @@ int gameStuff(__attribute__((unused)) void *args)
                                 DrawLine3D((Vector3){minPath->vecs[i].x, minPath->vecs[i].y + scale / 10, minPath->vecs[i].z},
                                            (Vector3){minPath->vecs[i + 1].x, minPath->vecs[i + 1].y + scale / 10, minPath->vecs[i + 1].z}, RED);
                         }
-                        if (closerPoint.x == secondCloserPoint.x && closerPoint.y == secondCloserPoint.y && closerPoint.z == secondCloserPoint.z) {
+                        // closerPoint.x - secondCloserPoint.x < .001 && closerPoint.y == secondCloserPoint.y && closerPoint.z == secondCloserPoint.z
+                        if (Vector3Length(Vector3Subtract(closerPoint, secondCloserPoint)) < .001) {
                                 DrawSphere((Vector3){closerPoint.x, closerPoint.y, closerPoint.z}, scale / 10, YELLOW);
                                 DrawSphere((Vector3){secondCloserPoint.x, secondCloserPoint.y, secondCloserPoint.z}, scale / 10, YELLOW);
                         } else {
@@ -855,7 +833,7 @@ int gameStuff(__attribute__((unused)) void *args)
 
                 var modelMatrix = MatrixIdentity();
                 var viewMatrix = MatrixLookAt(cam.position, cam.target, cam.up);
-                var projectionMatrix = MatrixPerspective(cam.fovy * DEG2RAD, (float)GetScreenWidth() / GetScreenHeight(), 0.01f, 1000.0f);
+                var projectionMatrix = MatrixPerspective(cam.fovy * DEG2RAD, (float)GetScreenWidth() / GetScreenHeight(), 0.01f, 5000.0f);
                 var mvp = MatrixMultiply(MatrixMultiply(viewMatrix, modelMatrix), projectionMatrix);
 
                 glActiveTexture(GL_TEXTURE0);
@@ -886,7 +864,8 @@ int gameStuff(__attribute__((unused)) void *args)
                         DrawText("Press L to load the roads", GetScreenWidth() * 2 / 3, 10, 20, (Color){255, 255, 255, 120});
                 } else {
                         DrawText("Press P to pause", GetScreenWidth() * 2 / 3, 10, 20, (Color){255, 255, 255, 120});
-                        DrawText(TextFormat("Press C to copy the current position to the clipboard"), GetScreenWidth() * 2 / 3, 30, 20,
+                        //Bottom of screen "Press C to copy the current position to the clipboard"
+                        DrawText("Press C to copy the current position to the clipboard", GetScreenWidth() * 2 / 3, GetScreenHeight() - 20, 20,
                                  (Color){255, 255, 255, 120});
                 }
                 if (IsKeyDown(KEY_C)) {
@@ -897,7 +876,7 @@ int gameStuff(__attribute__((unused)) void *args)
                 }
                 DrawText(TextFormat("\nCloser point: %f, %f, %f", closerPoint.x, closerPoint.y, closerPoint.z), GetScreenWidth() * 2 / 3, 10, 20,
                          (Color){255, 255, 255, 120});
-                renderMinimap((struct minimapCTX){.state = kmmInit}, &modelPosition, &frontVec, &PointOfOrigin);
+                renderMinimap(&minimapState, &modelPosition, &frontVec, &PointOfOrigin);
                 EndDrawing();
 
                 thrd_yield();
@@ -906,8 +885,6 @@ int gameStuff(__attribute__((unused)) void *args)
         CloseWindow();
         return 1;
 }
-// parse optionsm using getopt
-//  with help included
 void parse_options(int argc, char *argv[])
 {
         int opt;
@@ -930,10 +907,6 @@ void parse_options(int argc, char *argv[])
                 }
         }
 }
-// proccess json data from overpass
-#include <json-c/json.h>
-u64 jgetAs_u64(json_object *obj, const char *key) { return json_object_get_int64(json_object_object_get(obj, key)); }
-struct node *node_by_id(struct node *nodes, u64 id);
 
 // read command output
 //  TODO: This is for not malicius commands, if you want to use this
@@ -1133,17 +1106,18 @@ v3 sphericalToCartesian(float radius, Radian pitchAngle, Radian yawAngle, v3 *ce
         return resp;
 }
 // Process camera to rotate aroung the cam->target (distance 10 units)
-void processCam(CameraMode cm, Camera *cam)
+//Returns the distance from the camera to the target
+f32 processCam(CameraMode cm, Camera *cam)
 {
         if (cm != CAMERA_THIRD_PERSON)
-                return;
+                return 0;
         // Factors
         const float pitchFactor = 2;
         const float yawFactor = 2;
-        const float maxRadius = 100;
+        const float maxRadius = 1000;
         const float minRadius = .01;
         static float radius = 3;
-        radius -= GetMouseWheelMove() * (IsKeyDown(KEY_LEFT_ALT) ? .1 : IsKeyDown(KEY_LEFT_CONTROL) * 2 + 0.5);
+        radius -= GetMouseWheelMove() * (IsKeyDown(KEY_LEFT_ALT) ? .1 : IsKeyDown(KEY_LEFT_CONTROL) * (maxRadius-radius)*2/10 + 0.5);
         radius = fminf(fmaxf(radius, minRadius), maxRadius);
         const float deltaTime = GetFrameTime();
         // Globals
@@ -1169,6 +1143,7 @@ void processCam(CameraMode cm, Camera *cam)
         // Crop camera position
         camPosition.y = fmax(camPosition.y, 0.1);
         cam->position = camPosition;
+        return radius;
 }
 
 v3v3 intersecRayPlane(v3 rayOrigin, v3 rayDirection, v3 planeOrigin, v3 planeNormal)
@@ -1181,29 +1156,51 @@ v3v3 intersecRayPlane(v3 rayOrigin, v3 rayDirection, v3 planeOrigin, v3 planeNor
         }
         return (v3v3){.lineStart = (v3){0}, .lineEnd = (v3){0}};
 }
-/**
- * @brief Returns the Lat and long of a point from meters from the origin
- *
- *  */
 
-// struct v3$2$GP {
-//         union {
-//                 struct {
-//                         float v3x;
-//                         float v3y;
-//                         float v3z;
-//                 };
-//                 struct {
-//                         float v2x;
-//                         float __v2;
-//                         float v2y;
-//                 };
-//                 struct {
-//                         float lat;
-//                         float __lat;
-//                         float lon;
-//                 };
-//         };
-// };
+int renderRoads(struct renderRoadsArgs *args)
+{
+        var roadsAsPaths = args->roadsAsPaths;
+        var RoadsInMetersP = args->RoadsInMeters;
+        var loadedRoadsLP = args->loadedRoadsLP;
+        var vao = args->vao;
+        var vbo = args->vbo;
+        var ebo = args->ebo;
 
-// Mallocs su64.datac
+        if (*roadsAsPaths != NULL && !(*RoadsInMetersP)) {
+                L("------------- Now We will generate the vertexes");
+                thrd_t roadVertexGenThread;
+                struct {
+                        PathsList *pathList;
+                        LiteMesh **meshesAP;
+                } roadVertexGenArgs = {.pathList = *roadsAsPaths, .meshesAP = loadedRoadsLP};
+                /// THe roads in meters :
+                // for (u32 i = 0; (*roadsAsPaths)[i] != NULL; i++) {
+                //         var pathRoad = (*roadsAsPaths)[i];
+                //         Ld("Path %d: %p\n", i, pathRoad);
+                //         for (u32 j = 0; j < pathRoad->nElements; j++) {
+                //                 Ld("\tPoint %d: %f, %f, %f\n", j, pathRoad->vecs[j].x, pathRoad->vecs[j].y, pathRoad->vecs[j].z);
+                //         }
+                // }
+
+                var timer = clock();
+                thrd_create(&roadVertexGenThread, roadVertexGen, &roadVertexGenArgs);
+                *RoadsInMetersP = true;
+                thrd_join(roadVertexGenThread, NULL);
+                L("----- Time road to vertexes: %fms", (float)(clock() - timer) / CLOCKS_PER_SEC * 1000);
+                timer = clock();
+                // Now LiteMesh is loaded
+                //  we upload it to the GPU
+                // Save to file the mesh
+                Ld("LoadedRoadsL.indiceCount: %d\n", (*loadedRoadsLP)->indexCount);
+                Ld("LoadedRoadsL.vertexCount: %d\n", (*loadedRoadsLP)->vertexCount);
+                timer = clock();
+                glBindVertexArray(vao);
+                glBindBuffer(GL_ARRAY_BUFFER, vbo);
+                glBufferData(GL_ARRAY_BUFFER, sizeof(v3v2) * (*loadedRoadsLP)->vertexCount, (*loadedRoadsLP)->ver_texcoords, GL_STATIC_DRAW);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u32_3) * (*loadedRoadsLP)->indexCount, (*loadedRoadsLP)->indices, GL_STATIC_DRAW);
+                glBindVertexArray(0);
+                L("-----Time to upload to GPU: %fms ", (float)(clock() - timer) / CLOCKS_PER_SEC * 1000);
+        }
+        return 0;
+}

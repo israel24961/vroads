@@ -40,7 +40,12 @@ __Not yet__
     1. First iteration: 
         - [X] Load the png from the internet
         - [X] Display the png in a corner of the screen
-        - [ ] Make the minimap move with the player
+        - [X] Make the minimap move with the player
+        - [X] Make the minimap zoom in and out 
+        - [X] Make the minimap charge the next chunk when the player in the other chunk
+    2. Second iteration:
+        - [ ] Load more than one chunk at the same time
+
 
 
 

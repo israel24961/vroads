@@ -1,35 +1,41 @@
 #version 330
 #extension GL_ARB_explicit_uniform_location : enable
 
+#define v2 vec2
+#define v3 vec3
+
 // Input vertex attributes
 layout(location = 0) in vec3 vertexPosition;
 layout(location = 1 ) in vec2 vertexTexCoord;
 
 // Input uniform values
-layout(location = 3) uniform float rotationRadians;
+layout(location = 3) uniform mat4 rotate;
+layout(location = 4) uniform mat4 scale;
+layout(location = 5) uniform v2 translation;
+
+layout(location = 6) uniform v2  centerTexture;
 
 // Output vertex attributes (to fragment shader)
 out vec2 fragTexCoord;
 
-// NOTE: Add here your custom variables
-
-vec2 rotate(vec2 v, float a) {
-	float s = sin(a);
-	float c = cos(a);
-	mat2 m = mat2(c, s, -s, c);
-	return m * v;
+v2 ApplyCenter(v2 fragCord, v2 marker)
+{
+    v2 center=v2(0.5, 0.5);
+    v2 ilotilat= v2(marker.y, marker.x);
+    v2 S =  ilotilat - center;
+    v2 T= S; // The texture has to be translated in the opposite direction
+    return fragCord + T;
 }
 
 void main()
 {
     // Send vertex attributes to fragment shader
     //fragTexCoord =  rotate(vertexTexCoord, rotationRadians);
-    vec2 coord = vertexTexCoord;
-    float sin_factor = sin(rotationRadians);
-    float cos_factor = cos(rotationRadians);
-    coord = (coord - 0.5) * mat2(cos_factor, sin_factor, -sin_factor, cos_factor);
-    coord += 0.5;
-    fragTexCoord = coord;
 
-    gl_Position =  vec4(vertexPosition, 1.0);
+    // v2 rotatedVxCoord = rotate(vertexTexCoord, frontVector);
+    fragTexCoord =  ApplyCenter( vertexTexCoord, centerTexture);
+    // fragTexCoord =  vertexTexCoord;
+
+
+    gl_Position =  rotate*scale*vec4(vertexPosition, 1.0)+vec4(translation, 0.0, 0.0);
 }

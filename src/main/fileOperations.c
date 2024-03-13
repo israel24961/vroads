@@ -1,10 +1,5 @@
 #include "fileOperations.h"
 
-#define Le(...)                                                                \
-  printf("\033[0;31m%s:%s:%d: ", __FILE__, __func__, __LINE__);                \
-  printf(__VA_ARGS__);                                                         \
-  printf("\033[0m\n");
-
 int saveToFile(struct saveToFileArgs *args) {
   FILE *file = fopen(args->filename, "w");
   if (file == NULL) {
