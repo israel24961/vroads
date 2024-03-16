@@ -13,6 +13,7 @@ struct minimapCTX {
         // internal
         GLuint vao;
         GLuint textureIds;
+        GLuint textureIdsLeft;
         GLuint markerTextureId;
         GLuint shaderId;
         GLuint newTextureId;

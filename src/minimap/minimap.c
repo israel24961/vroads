@@ -10,10 +10,18 @@ GLuint LoadTextureMarker(Image *marker)
         glBindTexture(GL_TEXTURE_2D, markerTexId);
         texClamped$Linear();
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, marker->width, marker->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, marker->data);
-        texMipMap();
         return markerTexId;
 }
 
+/**
+ *  \brief Gets the tile number for a given lat/long and zoom level
+ *
+ *  The index increases left to right, bottom to top,
+ *  Reference: https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
+ *
+ * \param lat Latitude
+ *  \return {.x = latTile, .y = longTile}
+ **/
 f32f32 getTileNumber(float lat, float lon, i32 zoom)
 {
         var xtile = ((lon + 180.0) / 360.0 * (1 << zoom));
@@ -190,8 +198,8 @@ int renderMinimap(struct minimapCTX *mmContext, v3 *currentPos, v3 *frontVec, v3
                 var hasTileChange = AreDifferentTilesUF(mmContext->OldTileXY, currTile);
 
                 if (hasZoomChanged || hasTileChange) {
-                    Lw("Zoom changed from %d to %d", mmContext->oldZoom, mmContext->zoom);
-                    Lw("Tile changed from (%d, %d) to (%.2f, %.2f)", mmContext->OldTileXY.a, mmContext->OldTileXY.b, currTile.a, currTile.b);
+                        Lw("Zoom changed from %d to %d", mmContext->oldZoom, mmContext->zoom);
+                        Lw("Tile changed from (%d, %d) to (%.2f, %.2f)", mmContext->OldTileXY.a, mmContext->OldTileXY.b, currTile.a, currTile.b);
                         goto kDataReadyBlock;
                 } else {
                         goto kReadyBlock;
@@ -207,6 +215,10 @@ int renderMinimap(struct minimapCTX *mmContext, v3 *currentPos, v3 *frontVec, v3
                                 glDeleteTextures(1, &mmContext->textureIds);
                                 Lw("Deleted texture: %d", mmContext->textureIds);
                         }
+                        if (mmContext->textureIdsLeft != 0) {
+                                glDeleteTextures(1, &mmContext->textureIdsLeft);
+                                Lw("Deleted left texture: %d", mmContext->textureIdsLeft);
+                        }
 
                         Lw("Context: vao: %d, texture: %d...", mmContext->vao, mmContext->textureIds);
                         var latLong = WorldCoordsToLatLong(currentPos->x, currentPos->z, (v2){PointOfOrigin->x, PointOfOrigin->z});
@@ -216,19 +228,28 @@ int renderMinimap(struct minimapCTX *mmContext, v3 *currentPos, v3 *frontVec, v3
                         L("Tile: (%.2f, %.2f)", tile.a, tile.b);
                         // This is inverted because I use a/x as lat and b/y as long
                         var tileImage = getTileImage(mmContext->zoom, tile.b, tile.a);
+                        var tileImageLeft = getTileImage(mmContext->zoom, tile.b, tile.a - 1);
 
                         assert(tileImage.datac != NULL);
                         var img = LoadImageFromMemory(".png", tileImage.data, tileImage.size);
-                        // ImageRotateCW(&img);
-                        assert(img.data != NULL);
-                        L("Loaded image : %d, %d", img.width, img.height);
-                        GLuint minimapTexId;
+                        var imgLeft = LoadImageFromMemory(".png", tileImageLeft.data, tileImageLeft.size);
 
-                        minimapTexId = vroadLoadTextureClamped(&img);
+                        assert(img.data != NULL);
+                        assert(imgLeft.data != NULL);
+
+                        L("Loaded image : %d, %d", img.width, img.height);
+                        L("Loaded left image : %d, %d", imgLeft.width, imgLeft.height);
+
+                        GLuint minimapTexId = vroadLoadTextureClamped(&img);
+                        GLuint minimapTexIdLeft = vroadLoadTextureClamped(&imgLeft);
 
                         mmContext->textureIds = minimapTexId;
+                        mmContext->textureIdsLeft = minimapTexIdLeft;
+
                         L("Loaded texture: %d", minimapTexId);
+                        L("Loaded left texture: %d", minimapTexIdLeft);
                         UnloadImage(img);
+                        UnloadImage(imgLeft);
 
                         mmContext->oldZoom = mmContext->zoom;
                         mmContext->OldTileXY = (u32u32){tile.a, tile.b};
@@ -253,11 +274,19 @@ int renderMinimap(struct minimapCTX *mmContext, v3 *currentPos, v3 *frontVec, v3
                 rlSetUniformMatrix(3, MatrixRotateZ(0));
                 glUniform2f(6, tileDecimals.a, tileDecimals.b); // Center image
                 // glUniform2f(6, 0, 0); // Center image
+                glUniform1i(glGetUniformLocation(mmContext->shaderId, "mainTexture"), 0);
+                glUniform1i(glGetUniformLocation(mmContext->shaderId, "topTexture"), 1);
 
+                //
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, mmContext->textureIds);
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, mmContext->textureIdsLeft);
+
                 glBindVertexArray(mmContext->vao);
                 glDrawArrays(GL_TRIANGLES, 0, 6);
+                //Deactivate GL_TEXTURE1
+
 
                 // Draw the marker
                 // Marker
@@ -268,6 +297,9 @@ int renderMinimap(struct minimapCTX *mmContext, v3 *currentPos, v3 *frontVec, v3
                 // Rotation
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, mmContext->markerTextureId);
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, mmContext->markerTextureId);
+
                 glBindVertexArray(mmContext->vao);
                 glDrawArrays(GL_TRIANGLES, 0, 6);
 

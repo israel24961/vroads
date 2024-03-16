@@ -17,6 +17,7 @@ layout(location = 6) uniform v2  centerTexture;
 
 // Output vertex attributes (to fragment shader)
 out vec2 fragTexCoord;
+out vec2 fragTexCoord2;
 
 v2 ApplyCenter(v2 fragCord, v2 marker)
 {
@@ -34,6 +35,7 @@ void main()
 
     // v2 rotatedVxCoord = rotate(vertexTexCoord, frontVector);
     fragTexCoord =  ApplyCenter( vertexTexCoord, centerTexture);
+    fragTexCoord2 = ApplyCenter( vertexTexCoord, centerTexture + v2(1, 0));
     // fragTexCoord =  vertexTexCoord;
 
 

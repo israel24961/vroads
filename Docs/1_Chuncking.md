@@ -43,8 +43,10 @@ __Not yet__
         - [X] Make the minimap move with the player
         - [X] Make the minimap zoom in and out 
         - [X] Make the minimap charge the next chunk when the player in the other chunk
-    2. Second iteration:
+    2. Second iteration: 👷
         - [ ] Load more than one chunk at the same time
+            - [ ] Draw just one other chunk to the left  (Is it possible to use two or more textures for the same vertexes?)
+        - [ ] Make the minimap load the chunks in a different thread
 
 
 
