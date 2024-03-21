@@ -263,7 +263,7 @@ pathPoints *WayToCoordsPaths(struct way *w)
         return resp;
 }
 /// Return overpass result as a string
-OverpassQuery *retrieveRoadsForGame(__attribute__((unused)) void *ov)
+__attr(malloc) OverpassQuery *retrieveRoadsForGame(__attribute__((unused)) void *ov)
 {
         // Small place: 820 elements (700 nodes, 120 ways)
         double bottom_left_lat = 40.4293746, bottom_left_lon = -3.6857843; //, top_right_lat = 40.4363450, top_right_lon = -3.6735964;
@@ -304,25 +304,14 @@ int MapCoordsToGraphic(__attribute__((unused)) void *args)
         // List of roads
         // thrd_t overpassThread;
         PathsList *roadsAsPaths = NULL;
-        var __attribute__((unused)) ovQ = retrieveRoadsForGame(&roadsAsPaths);
-        // Test road
-        // var test0 = (v2){40.423352436f, -3.7001574873907703f};
-        // var test0Meters = LatLongToMeters(PointOfOrigin.x, PointOfOrigin.z, test0.x, test0.y);
-        // L("--------------------------------");
-        // L("From %f, %f in latlong to %f, %f in meters\n", test0.x, test0.y, test0Meters.x, test0Meters.y);
-        // L("Distance in meters √(x²+y²): %f\n", Vector2Distance(test0Meters, (v2){0, 0}));
-        // L("--------------------------------");
-        // Turn all the roads to meters
+        var ovQ = retrieveRoadsForGame(&roadsAsPaths);
+        free(ovQ->query);
+        free(ovQ); // TODO: Free elements
         var deltas = LatLongToWorldDeltas(PointOfOrigin);
         for (u32 i = 0; roadsAsPaths[i] != NULL; i++) {
                 var pathRoad = roadsAsPaths[i];
                 var scale = getenv("SCALE") ? atof(getenv("SCALE")) : 1;
                 for (u32 j = 0; j < pathRoad->nElements; j++) {
-                        // var inMeters = LatLongToMeters(PointOfOrigin.x, PointOfOrigin.z, pathRoad->vecs[j].x, pathRoad->vecs[j].z);
-                        // // Scale the roads
-                        // pathRoad->vecs[j].x = inMeters.x * scale;
-                        // pathRoad->vecs[j].y = scale * pathRoad->vecs[j].y;
-                        // pathRoad->vecs[j].z = inMeters.y * scale;
                         pathRoad->vecs[j].x = (pathRoad->vecs[j].x - PointOfOrigin.x) * deltas.x;
                         pathRoad->vecs[j].y = scale * pathRoad->vecs[j].y;
                         pathRoad->vecs[j].z = (pathRoad->vecs[j].z - PointOfOrigin.z) * -deltas.y;
@@ -616,9 +605,10 @@ int gameStuff(__attribute__((unused)) void *args)
         DisableCursor();
 
         // Girl model and animations
-        Model model = LoadModel("resources/bettergirl.glb");
-        model.transform = MatrixScale(.05, .05, .05);
-        model.transform = MatrixMultiply(model.transform, MatrixRotateX(90 * DEG2RAD));
+        Model girlModel = LoadModel("resources/bettergirl.glb");
+
+        girlModel.transform = MatrixScale(.05, .05, .05);
+        girlModel.transform = MatrixMultiply(girlModel.transform, MatrixRotateX(90 * DEG2RAD));
         int animsCount = 0;
         ModelAnimation *animGirl = LoadModelAnimations("resources/bettergirl.glb", &animsCount);
         for (int i = 0; i < animsCount; i++) {
@@ -630,7 +620,6 @@ int gameStuff(__attribute__((unused)) void *args)
         Texture2D roadTexture = LoadTextureFromImage(roadImg);
 
         ISNULL(roadTexture.id, ("Error loading texture"));
-        // UnloadImage(roadImg); // Once image has been converted to texture and uploaded to VRAM, it can
         //  be unloaded from RAM
         Vector3 modelPosition = {0, 0, 0};
 
@@ -643,6 +632,8 @@ int gameStuff(__attribute__((unused)) void *args)
         int i = GetShaderLocationAttrib(roadShader, "vertexPosition");
         L("vertexPosition: %d", i);
         i = rlGetLocationUniform(roadShader.id, "mvp");
+        free(vxStr);
+        free(fgStr);
         // L("mvp: %d", i);
         // L("Program shader id: %d", roadShader.id);
 
@@ -727,12 +718,18 @@ int gameStuff(__attribute__((unused)) void *args)
         glGenerateMipmap(GL_TEXTURE_2D);
 
         glBindVertexArray(0);
+        UnloadImage(roadImg); // Once image has been converted to texture and uploaded to VRAM, it can
 
         bool RoadsInMeters = false;
         LiteMesh *loadedRoadsL = NULL;
         struct renderRoadsArgs renderRoadsArgs = {
             .roadsAsPaths = roadsAsPaths, .RoadsInMeters = &RoadsInMeters, .loadedRoadsLP = &loadedRoadsL, .vao = vao, .vbo = vbo, .ebo = ebo};
-        struct minimapCTX minimapState = {.state = kmmInit, .zoom = 16, .scale = {.45, .45, 0}, .translation = {.75, .75, 0}};
+
+        struct minimapPNGsManager *minimapPNGsManager = calloc(sizeof(struct minimapPNGsManager) + 9 * sizeof(struct texZoomTile), 1);
+        minimapPNGsManager->nITT = 9;
+
+        struct minimapCTX minimapState = {
+            .state = kmmInit, .zoom = 16, .scale = {.45, .45, 0}, .translation = {.75, .75, 0}, .pngManager = minimapPNGsManager};
 
         while (!WindowShouldClose()) {
                 if (IsKeyDown(KEY_P)) {
@@ -750,7 +747,7 @@ int gameStuff(__attribute__((unused)) void *args)
                 v3 frontVecV3 = {cam.target.x - cam.position.x, cam.target.y - cam.position.y, cam.target.z - cam.position.z};
                 float frontAngle = atan2(frontVec.z, frontVec.x);
 
-                i64i64v3 resp = runningGuyNF(animGirl, &model, &frontVec, &modelPosition);
+                i64i64v3 resp = runningGuyNF(animGirl, &girlModel, &frontVec, &modelPosition);
                 cam.target = resp.nextPost;
                 cam.target.y = .75;
                 // Better first person like camera :)
@@ -761,9 +758,9 @@ int gameStuff(__attribute__((unused)) void *args)
                 i64 currentAnimation = resp.i64i64.a;
                 i64 animFrameCounter = resp.i64i64.b;
                 v3 nextPos = resp.nextPost;
-                var camRadius=processCam(CAMERA_THIRD_PERSON, &cam);
-                if (camRadius){//Skip if camRadius is Zero
-                    minimapState.zoom=18-camRadius/200;
+                var camRadius = processCam(CAMERA_THIRD_PERSON, &cam);
+                if (camRadius) { // Skip if camRadius is Zero
+                        minimapState.zoom = 18 - camRadius / 200;
                 }
 
                 BeginDrawing();
@@ -819,7 +816,7 @@ int gameStuff(__attribute__((unused)) void *args)
                         }
                 }
 
-                DrawModel(model, nextPos, .1, WHITE);
+                DrawModel(girlModel, nextPos, .1, WHITE);
 
                 drawProyectiles(GetFrameTime());
                 // Shadow
@@ -864,7 +861,7 @@ int gameStuff(__attribute__((unused)) void *args)
                         DrawText("Press L to load the roads", GetScreenWidth() * 2 / 3, 10, 20, (Color){255, 255, 255, 120});
                 } else {
                         DrawText("Press P to pause", GetScreenWidth() * 2 / 3, 10, 20, (Color){255, 255, 255, 120});
-                        //Bottom of screen "Press C to copy the current position to the clipboard"
+                        // Bottom of screen "Press C to copy the current position to the clipboard"
                         DrawText("Press C to copy the current position to the clipboard", GetScreenWidth() * 2 / 3, GetScreenHeight() - 20, 20,
                                  (Color){255, 255, 255, 120});
                 }
@@ -1106,7 +1103,7 @@ v3 sphericalToCartesian(float radius, Radian pitchAngle, Radian yawAngle, v3 *ce
         return resp;
 }
 // Process camera to rotate aroung the cam->target (distance 10 units)
-//Returns the distance from the camera to the target
+// Returns the distance from the camera to the target
 f32 processCam(CameraMode cm, Camera *cam)
 {
         if (cm != CAMERA_THIRD_PERSON)
@@ -1117,7 +1114,7 @@ f32 processCam(CameraMode cm, Camera *cam)
         const float maxRadius = 1000;
         const float minRadius = .01;
         static float radius = 3;
-        radius -= GetMouseWheelMove() * (IsKeyDown(KEY_LEFT_ALT) ? .1 : IsKeyDown(KEY_LEFT_CONTROL) * (maxRadius-radius)*2/10 + 0.5);
+        radius -= GetMouseWheelMove() * (IsKeyDown(KEY_LEFT_ALT) ? .1 : IsKeyDown(KEY_LEFT_CONTROL) * (maxRadius - radius) * 2 / 10 + 0.5);
         radius = fminf(fmaxf(radius, minRadius), maxRadius);
         const float deltaTime = GetFrameTime();
         // Globals

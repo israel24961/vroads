@@ -32,9 +32,7 @@ main(){
     -DCMAKE_BUILD_TYPE=$BUILD_TYPE $EXTRA_DEFS || bye "CMake failed" ;
   cd $BUILD_PATH || perr "No BUILD_PATH"
 
-  if [ "$execute" = "gdb" ]; then
-    gdb -tui ./vroads || bye "GDB failed"
-  fi
+
   #make dry if dry_run is set
   if [ "$dry_run" = "dry" ]; then
     printf "\033[32m"
@@ -48,6 +46,15 @@ main(){
     fi
   fi
 
+  if [ "$execute" = "test" ]; then
+    ctest || bye "Test failed"
+    return 0
+  fi
+  if [ "$execute" = "gdb" ]; then
+    gdb -tui ./vroads || bye "GDB failed"
+    return 0
+  fi
+
 }
 #parses the command line arguments with getopt
 options(){
@@ -56,7 +63,7 @@ options(){
   dry_run=''
   execute=''
   #parse arguments
-  while getopts 'derhg' flag; do
+  while getopts 'derhgt' flag; do
     case "${flag}" in
       d) kind='debug' ;;
       e) execute='execute' ;;
@@ -64,6 +71,7 @@ options(){
       h) command_help ;
         exit 0 ;;
       g) execute='gdb' ;;
+      t) execute='test' ;;
       *) command_help;
         bye "Unexpected option ${flag}" ;;
     esac
@@ -77,6 +85,7 @@ command_help(){
   printf "  -d, --debug     Build in debug mode\n"
   printf "  -r, --release   Build in release mode\n"
   printf "  -e, --execute   Execute the program after building\n"
+  printf "  -t  --test      Execute the tests\n"
   printf "  -g --gdb        Execute the program with gdb\n"
   printf "  -h, --help      Show this help message\n"
   printf "  --dry           Dry run, only prints the commands\n"

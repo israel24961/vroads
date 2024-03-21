@@ -13,11 +13,18 @@ layout(location = 3) uniform mat4 rotate;
 layout(location = 4) uniform mat4 scale;
 layout(location = 5) uniform v2 translation;
 
-layout(location = 6) uniform v2  centerTexture;
+layout(location = 6) uniform v2  centerTextureOffset;
 
 // Output vertex attributes (to fragment shader)
-out vec2 fragTexCoord;
-out vec2 fragTexCoord2;
+out vec2 fragTexTopLeftCoord;
+out vec2 fragTexTopCenterCoord;
+out vec2 fragTexTopRightCoord;
+out vec2 fragTexLeftCoord;
+out vec2 fragTexCenterCoord;
+out vec2 fragTexRightCoord;
+out vec2 fragTexBottomLeftCoord;
+out vec2 fragTexBottomCenterCoord;
+out vec2 fragTexBottomRightCoord;
 
 v2 ApplyCenter(v2 fragCord, v2 marker)
 {
@@ -34,8 +41,17 @@ void main()
     //fragTexCoord =  rotate(vertexTexCoord, rotationRadians);
 
     // v2 rotatedVxCoord = rotate(vertexTexCoord, frontVector);
-    fragTexCoord =  ApplyCenter( vertexTexCoord, centerTexture);
-    fragTexCoord2 = ApplyCenter( vertexTexCoord, centerTexture + v2(1, 0));
+    fragTexTopLeftCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(1, 1));
+    fragTexTopCenterCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(1, 0));
+    fragTexTopRightCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(1,-1));
+    fragTexLeftCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(0, 1));
+    fragTexCenterCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(0, 0));
+    fragTexRightCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(0, -1));
+    fragTexBottomLeftCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(-1, 1));
+    fragTexBottomCenterCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(-1, 0));
+    fragTexBottomRightCoord = ApplyCenter( vertexTexCoord, centerTextureOffset + v2(-1,-1));
+
+
     // fragTexCoord =  vertexTexCoord;
 
 

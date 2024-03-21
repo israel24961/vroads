@@ -50,3 +50,4 @@ void texMipMap() ;
 void texClamped$Linear();
 void texClamped$Linear();
 u32u32 vroadGenv3v2$vao$vbo(u32 count, v3v2 minimapVertexes[count]);
+
