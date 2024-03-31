@@ -8,7 +8,7 @@ struct LiteQueue {
         u32_4 _queue[];
 };
 
-struct LiteQueue *LQueueInit(u32 capacity)
+__malloc struct LiteQueue *LQueueInit(u32 capacity)
 {
 
         struct LiteQueue *queue = (struct LiteQueue *)malloc(sizeof(struct LiteQueue) + capacity * sizeof(u32_4));
@@ -16,7 +16,7 @@ struct LiteQueue *LQueueInit(u32 capacity)
         queue->_front = queue->_queue;
         queue->_curSize = 0;
         queue->_capacity = capacity;
-      return queue;
+        return queue;
 }
 
 bool LQueuePush(struct LiteQueue *queue, u32_4 val)

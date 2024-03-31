@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.5) # setting this is required
 project(vroads)            # this sets the project name
 #set debug flags if debug build
 if(CMAKE_BUILD_TYPE MATCHES Debug)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -ggdb -g3 -O0 -Wall -Wextra -Wfloat-equal -fverbose-asm  --coverage -fsanitize=address -Wno-missing-braces")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -ggdb -g3 -O0 -Wall -Wextra -Wfloat-equal  -fsanitize=address -Wno-missing-braces")
     add_definitions(-DDEBUG)
     #elseif (CMAKE_BUILD_TYPE MATCHES Release)
 else()
@@ -129,7 +129,12 @@ target_link_libraries(testMiniDataStructs
     PUBLIC m
     )
 
-add_test(NAME testMiniDataStructs COMMAND testMiniDataStructs)
+# very tight to the implementation, ctest is even cringier than
+# xUnit
+add_test(NAME correct_push_and_pop COMMAND testMiniDataStructs 1)
+add_test(NAME more_push_than_capacity COMMAND testMiniDataStructs 2)
+add_test(NAME push_queue_notSequential COMMAND testMiniDataStructs 3)
+add_test(NAME push_1000 COMMAND testMiniDataStructs 3)
 
 
 ###############################################################################

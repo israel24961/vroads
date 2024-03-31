@@ -3,6 +3,7 @@ build/
 compile_commands.json
 8km_data.json
 20km_data.json
+.cache
 
 #git
 .gdb_history

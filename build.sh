@@ -28,7 +28,8 @@ main(){
 
 
   ln -sf $BUILD_PATH/compile_commands.json .
-  cmake  -S . -B "$BUILD_PATH" -DCMAKE_EXPORT_COMPILE_COMMANDS=True \
+  
+ CC="$compiler" cmake  -S . -B "$BUILD_PATH" -DCMAKE_EXPORT_COMPILE_COMMANDS=True \
     -DCMAKE_BUILD_TYPE=$BUILD_TYPE $EXTRA_DEFS || bye "CMake failed" ;
   cd $BUILD_PATH || perr "No BUILD_PATH"
 
@@ -62,8 +63,9 @@ options(){
   kind='debug'
   dry_run=''
   execute=''
+  compiler='gcc'
   #parse arguments
-  while getopts 'derhgt' flag; do
+  while getopts 'derhgtc' flag; do
     case "${flag}" in
       d) kind='debug' ;;
       e) execute='execute' ;;
@@ -72,6 +74,7 @@ options(){
         exit 0 ;;
       g) execute='gdb' ;;
       t) execute='test' ;;
+      c) compiler='clang' ;;
       *) command_help;
         bye "Unexpected option ${flag}" ;;
     esac
@@ -88,6 +91,7 @@ command_help(){
   printf "  -t  --test      Execute the tests\n"
   printf "  -g --gdb        Execute the program with gdb\n"
   printf "  -h, --help      Show this help message\n"
+  printf "  -c, --clang    Use clang as compiler\n"
   printf "  --dry           Dry run, only prints the commands\n"
   printf "  --verbose       Verbose output\n"
   printf "Common usage:\n"

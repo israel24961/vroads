@@ -123,3 +123,4 @@ typedef struct {
 } pathPoints;
 
 pathPoints *WayToCoordsPaths(struct way *w) __attribute__((malloc));
+#include <iso646.h>

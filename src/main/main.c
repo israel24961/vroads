@@ -323,7 +323,7 @@ int MapCoordsToGraphic(__attribute__((unused)) void *args)
         *castedArgs = roadsAsPaths;
         return 0;
 }
-int main(int argc, char *argv[])
+int main(__attribute__((unused)) int argc, __attribute__((unused)) char *argv[])
 {
 #include <stddef.h>
         // Start log
@@ -666,7 +666,7 @@ int gameStuff(__attribute__((unused)) void *args)
         window = GetWindowHandle();
 
         // Road path
-        v3 path[] = {{0, 0, 0}, {4, 0, 0}}; //,{4,0,4}};
+        v3 path[] = {{0, 0, 0}, {4, 0, 0}};
         var results = GenRoadFromPath(sizeof(path) / sizeof(v3), path, getenv("ROADWIDTH") != null ? atoi(getenv("ROADWIDTH")) : 1.0, NULL);
         // Ld("results: %p", &results);
         // Ld("vertexCount: %d", results.vertexCount);
@@ -755,11 +755,9 @@ int gameStuff(__attribute__((unused)) void *args)
                 cam.target.z += .1 * sin(frontAngle);
                 processInput(iargs);
 
-                i64 currentAnimation = resp.i64i64.a;
-                i64 animFrameCounter = resp.i64i64.b;
                 v3 nextPos = resp.nextPost;
                 var camRadius = processCam(CAMERA_THIRD_PERSON, &cam);
-                if (camRadius) { // Skip if camRadius is Zero
+                if (camRadius < EPSILON && camRadius > -EPSILON) { // Skip if camRadius is Zero
                         minimapState.zoom = 18 - camRadius / 200;
                 }
 
@@ -1126,7 +1124,7 @@ f32 processCam(CameraMode cm, Camera *cam)
         }
         // Get Input
         v2 MousePitchYaw = GetMouseDelta();
-        MousePitchYaw = (MousePitchYaw.y == .0f && MousePitchYaw.x == .0f)
+        MousePitchYaw = (fabs(MousePitchYaw.y) < EPSILON && fabs(MousePitchYaw.x) <= EPSILON)
                             ? (v2){(-IsKeyDown(KEY_LEFT) + IsKeyDown(KEY_RIGHT)) * 30, (-IsKeyDown(KEY_UP) + IsKeyDown(KEY_DOWN)) * 30}
                             : MousePitchYaw;
 
@@ -1170,15 +1168,6 @@ int renderRoads(struct renderRoadsArgs *args)
                         PathsList *pathList;
                         LiteMesh **meshesAP;
                 } roadVertexGenArgs = {.pathList = *roadsAsPaths, .meshesAP = loadedRoadsLP};
-                /// THe roads in meters :
-                // for (u32 i = 0; (*roadsAsPaths)[i] != NULL; i++) {
-                //         var pathRoad = (*roadsAsPaths)[i];
-                //         Ld("Path %d: %p\n", i, pathRoad);
-                //         for (u32 j = 0; j < pathRoad->nElements; j++) {
-                //                 Ld("\tPoint %d: %f, %f, %f\n", j, pathRoad->vecs[j].x, pathRoad->vecs[j].y, pathRoad->vecs[j].z);
-                //         }
-                // }
-
                 var timer = clock();
                 thrd_create(&roadVertexGenThread, roadVertexGen, &roadVertexGenArgs);
                 *RoadsInMetersP = true;

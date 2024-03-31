@@ -23,7 +23,7 @@ struct minimapPNGsManager {
         Image requestedImage;
         struct reqZTile requestedTile;
         u32 nITT;
-        struct texZoomTile imgTexTile[];
+        struct texZoomTile imgTexTile[]; // Stores the each cell of the grid
 };
 struct minimapCTX {
         enum minimapStates state;
@@ -44,5 +44,6 @@ struct minimapCTX {
         u32u32 OldTileXY;
         u64 frameCount;
         struct minimapPNGsManager* pngManager;
+        u32 defaultTextureId;
 };
 int renderMinimap(struct minimapCTX *mmContexti, v3 *currentPos, v3 *frontVec, v3 * PointOfOrigin);
